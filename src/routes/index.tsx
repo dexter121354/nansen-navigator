@@ -36,8 +36,8 @@ const usd = (n: number) =>
 
 function Terminal() {
   const markets = getMarkets();
-  const [slug, setSlug] = useState(markets[0].slug);
-  const market = markets.find((m) => m.slug === slug)!;
+  const [slug, setSlug] = useState(markets[0]!.slug);
+  const market = markets.find((m) => m.slug === slug) ?? markets[0]!;
   const metric = useMemo(() => buildMetric(market), [market]);
   const dossier = useMemo(() => buildDossier(market, metric), [market, metric]);
 

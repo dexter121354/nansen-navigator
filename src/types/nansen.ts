@@ -1,6 +1,6 @@
 export interface HolderProfile {
   address: string;
-  label?: string;
+  label?: string | undefined;
   balance: number;
   winRate: number; // 0-1
   walletAgeDays: number;

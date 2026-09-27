@@ -30,7 +30,7 @@ function trades(
   }));
 }
 
-export const MARKETS: PredictionMarket[] = [
+const RAW_MARKETS = [
   {
     slug: "eth-4000-q4",
     shortName: "ETH $4K",
@@ -177,10 +177,12 @@ export const MARKETS: PredictionMarket[] = [
   },
 ];
 
+export const MARKETS: PredictionMarket[] = RAW_MARKETS;
+
 export function getMarkets(): PredictionMarket[] {
   return MARKETS;
 }
 
 export function getMarket(slug: string): PredictionMarket {
-  return MARKETS.find((m) => m.slug === slug) ?? MARKETS[0];
+  return MARKETS.find((m) => m.slug === slug) ?? (MARKETS[0] as PredictionMarket);
 }
