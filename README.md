@@ -3,7 +3,7 @@ Built for the Nansen Meridian Buildathon (September 2026)
 
 Live Web Terminal: https://nansen-navigator.lovable.app/
 
-// I saw tweet yesterday, I only had 6-7 hours to do this build. I had something much more complex in mind but I adjusted as per time constraints. that's why no dedicated domain is used.
+// I saw Buildathon tweet yesterday, I only had 6-7 hours to do this build. I had something much more complex in mind but I adjusted as per time constraints. that's why no dedicated domain is used too. also please use your own api key by clicking on key button at top right for accurate data.
 
 ---
 
