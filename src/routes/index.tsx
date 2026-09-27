@@ -1,26 +1,39 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { KeyRound, ScanSearch, Zap, CalendarDays } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Gauge } from "@/components/terminal/Gauge";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Ring } from "@/components/terminal/Ring";
 import { Address } from "@/components/terminal/Address";
-import { fetchLiveMarket, getMarkets } from "@/services/nansenApi";
-import { buildDossier, buildMetric } from "@/utils/divergenceEngine";
+import { fetchBoard } from "@/services/pulseApi";
+import { ASSET_META, snapshotBoard } from "@/services/snapshot";
+import { buildDossier, scoreAsset } from "@/utils/quantEngine";
+import type { AssetBoard, Horizon, QuantScore } from "@/types/pulse";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "PolyDivergence — Prediction Market vs Smart Money Terminal" },
+      { title: "PolyPulse — 4H & Daily Binary Quant Terminal" },
       {
         name: "description",
         content:
-          "PolyDivergence scores the gap between Polymarket implied odds and Nansen-tracked smart money positioning on Hyperliquid, with holder credibility analysis.",
+          "PolyPulse compares Polymarket 4-hour and daily crypto Up/Down odds with a 3-stream Nansen Smart Bias Score across perps, DEX and CEX flows.",
       },
-      { property: "og:title", content: "PolyDivergence — Web3 Intelligence Terminal" },
+      { property: "og:title", content: "PolyPulse — Binary Quant Terminal" },
       {
         property: "og:description",
-        content:
-          "Divergence Delta Index, Holder Credibility Score, smart money perps and spot netflows in one institutional dark terminal.",
+        content: "Find mispriced Polymarket Up/Down markets using Nansen smart money perps, DEX netflows and CEX supply shocks.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -29,328 +42,392 @@ export const Route = createFileRoute("/")({
   component: Terminal,
 });
 
-const usd = (n: number) =>
-  n >= 1_000_000
-    ? `$${(n / 1_000_000).toFixed(2)}M`
-    : n >= 1_000
-      ? `$${(n / 1_000).toFixed(1)}K`
-      : `$${n.toFixed(0)}`;
+const KEY_STORE = "polypulse.nansenKey";
+
+const usd = (n: number, sign = false) => {
+  const s = sign && n > 0 ? "+" : n < 0 ? "-" : "";
+  const a = Math.abs(n);
+  return a >= 1e6 ? `${s}$${(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${s}$${(a / 1e3).toFixed(1)}K` : `${s}$${a.toFixed(0)}`;
+};
+const ago = (m: number) => (m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ${m % 60}m ago`);
 
 function Terminal() {
-  const markets = getMarkets();
-  const [slug, setSlug] = useState(markets[0]!.slug);
-  const fallback = markets.find((m) => m.slug === slug) ?? markets[0]!;
-  const liveQ = useQuery({
-    queryKey: ["nansen-market", slug],
-    queryFn: () => fetchLiveMarket(slug),
-    staleTime: 60_000,
-    retry: false,
-  });
-  const market = liveQ.data?.market ?? fallback;
-  const isLive = liveQ.data?.live === true;
-  const metric = useMemo(() => buildMetric(market), [market]);
-  const dossier = useMemo(() => buildDossier(market, metric), [market, metric]);
+  const [horizon, setHorizon] = useState<Horizon>("4h");
+  const [userKey, setUserKey] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const [keyOpen, setKeyOpen] = useState(false);
 
-  const delta = metric.divergenceDelta;
-  const deltaColor =
-    Math.abs(delta) > 35 ? (delta > 0 ? "var(--neg)" : "var(--pos)") : "var(--muted-foreground)";
+  useEffect(() => {
+    setUserKey(localStorage.getItem(KEY_STORE) ?? "");
+  }, []);
+
+  const q = useQuery({
+    queryKey: ["pulse-board", horizon, userKey],
+    queryFn: () => fetchBoard(horizon, userKey),
+    staleTime: 60_000,
+    refetchInterval: 90_000,
+    retry: false,
+    placeholderData: keepPreviousData,
+  });
+
+  const snapshot = useMemo(() => snapshotBoard(horizon), [horizon]);
+  const sameHorizon = !!q.data && !q.isPlaceholderData;
+  const assets = sameHorizon ? q.data!.assets : snapshot;
+  const liveStreams = sameHorizon ? q.data!.liveStreams : 0;
+  const scored = useMemo(() => assets.map((a) => ({ a, s: scoreAsset(a) })), [assets]);
+  const selected = scored.find((x) => x.a.symbol === open);
+  const hLabel = horizon === "4h" ? "4h" : "Daily";
 
   return (
     <div className="min-h-screen font-mono text-foreground">
-      {/* Header */}
-      <header className="sticky top-0 z-20 border-b hairline bg-background/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-5 py-3">
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-semibold tracking-tight text-brand">POLY</span>
-            <span className="text-lg font-semibold tracking-tight">DIVERGENCE</span>
+      <header className="sticky top-0 z-30 border-b hairline bg-background/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="grid h-8 w-8 place-items-center rounded-md border border-brand/30 bg-brand/10">
+              <Zap className="h-4 w-4 text-brand" />
+            </div>
+            <div>
+              <div className="text-base font-semibold tracking-tight">
+                Poly<span className="text-brand">Pulse</span>
+              </div>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Binary Quant Terminal</div>
+            </div>
           </div>
-          <span className="rounded border border-brand/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-brand">
+          <span className="rounded border border-brand/20 bg-brand/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-brand">
             Powered by Nansen API
           </span>
-          <div className="ml-auto flex items-center gap-4 text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-2 rounded-full border border-pos/20 bg-pos/10 px-2.5 py-1 tracking-wider text-pos">
+          <div className="ml-auto flex items-center gap-3">
+            <span className="flex items-center gap-2 text-[11px] uppercase tracking-wider">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pos opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-pos" />
               </span>
-              NANSEN ORACLE: CONNECTED
+              Nansen Oracle: Live
             </span>
             <span
-              className={`rounded-full border px-2.5 py-1 tracking-wider ${
-                isLive ? "border-pos/20 bg-pos/10 text-pos" : "border-warn/20 bg-warn/10 text-warn"
+              className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                liveStreams > 0 ? "border-pos/25 bg-pos/10 text-pos" : "border-warn/25 bg-warn/10 text-warn"
               }`}
+              title="Live data streams out of 28 (7 assets × Polymarket, Perps, DEX, CEX)"
             >
-              {liveQ.isLoading ? "Syncing…" : isLive ? "Live API Connected" : "Cached Snapshot Active"}
+              {q.isFetching && !sameHorizon ? "Syncing…" : liveStreams > 0 ? `Live ${liveStreams}/28 streams` : "Cached Snapshot Active"}
             </span>
-            <span className="hidden tabular-nums sm:inline">24h VOL {usd(market.volume24h)}</span>
+            <button
+              type="button"
+              onClick={() => setKeyOpen(true)}
+              aria-label="Use your own Nansen API key"
+              className="grid h-8 w-8 place-items-center rounded-md border hairline text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <KeyRound className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl space-y-5 px-5 py-6">
-        {/* Market selector */}
-        <div className="flex flex-wrap gap-2">
-          {markets.map((m) => {
-            const active = m.slug === slug;
-            return (
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div className="inline-flex rounded-lg border hairline bg-card/40 p-1">
+            {(
+              [
+                ["4h", "4 Hours Crypto", Zap],
+                ["daily", "Daily Crypto", CalendarDays],
+              ] as const
+            ).map(([h, label, Icon]) => (
               <button
-                key={m.slug}
-                onClick={() => setSlug(m.slug)}
-                className={`rounded-full border px-3.5 py-1.5 text-xs transition-colors ${
-                  active
-                    ? "border-brand/60 bg-brand/10 text-brand"
-                    : "border-border text-muted-foreground hover:border-brand/40 hover:text-foreground"
+                key={h}
+                type="button"
+                onClick={() => setHorizon(h)}
+                className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm transition-all ${
+                  horizon === h ? "bg-brand/15 text-brand shadow-[inset_0_0_0_1px_var(--brand)]" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {m.shortName}
+                <Icon className="h-4 w-4" /> {label}
               </button>
-            );
-          })}
+            ))}
+          </div>
+          <p className="eyebrow max-w-md text-right">
+            SBS = 0.50·Perp Long Ratio + 0.30·DEX Flow + 0.20·CEX Supply Shock · Edge = SBS − Polymarket
+          </p>
         </div>
 
-        {/* Hero comparison */}
-        <section className="panel p-6">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{market.question}</h1>
-          <p className="eyebrow mt-1">
-            Polymarket crowd odds vs. Nansen smart money stance on {market.perp.symbol}
-          </p>
-
-          <div className="mt-6 grid items-center gap-5 lg:grid-cols-[1fr_auto_1fr]">
-            <Gauge
-              label="Polymarket implied"
-              sublabel="probability YES"
-              value={market.impliedProbability}
-              tone="brand"
-            />
-
-            <div className="relative flex flex-col items-center gap-2 surface px-6 py-6">
-              <div aria-hidden className="pointer-events-none absolute -inset-6 -z-10 rounded-full bg-gradient-to-br from-brand to-pos opacity-15 blur-3xl" />
-              <span className="eyebrow">
-                Divergence Delta Index
-              </span>
-              <span
-                className="text-5xl font-bold tabular-nums"
-                style={{ color: deltaColor }}
-              >
-                {delta > 0 ? "+" : ""}
-                {delta}
-              </span>
-              <span
-                className={`max-w-[16rem] rounded-full border px-3 py-1 text-center text-[11px] leading-relaxed ${
-                  Math.abs(delta) > 35
-                    ? delta > 0
-                      ? "border-neg/20 bg-neg/10 text-neg"
-                      : "border-pos/20 bg-pos/10 text-pos"
-                    : "hairline bg-muted/40 text-muted-foreground"
-                }`}
-              >
-                {metric.verdict}
-              </span>
-              <span className="mt-2 rounded-full border border-brand/20 bg-brand/10 px-2.5 py-0.5 text-[10px] tabular-nums text-brand">
-                HCS {metric.hcsScore}/100
-              </span>
-            </div>
-
-            <Gauge
-              label="Nansen smart money"
-              sublabel={`net long ${market.perp.symbol}`}
-              value={market.perp.netLongShortRatio}
-              tone="signal"
-            />
-          </div>
-        </section>
-
-        {/* Tabs */}
-        <Tabs defaultValue="holders" className="panel p-4">
-          <TabsList className="bg-secondary">
-            <TabsTrigger value="holders">Top Holders</TabsTrigger>
-            <TabsTrigger value="perps">Perp Positioning</TabsTrigger>
-            <TabsTrigger value="flows">Spot Netflows</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="holders" className="mt-4 space-y-4 overflow-x-auto">
-            <HolderCredibility holders={market.topHolders} />
-            <table className="w-full text-xs">
-              <thead className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                <tr className="border-b hairline">
-                  <th className="px-3 py-1.5 text-left">#</th>
-                  <th className="px-3 py-1.5 text-left">Address</th>
-                  <th className="px-3 py-1.5 text-right">Position</th>
-                  <th className="px-3 py-1.5 text-right">Win rate</th>
-                  <th className="px-3 py-1.5 text-right">Wallet age</th>
-                  <th className="px-3 py-1.5 text-left">Flags</th>
-                </tr>
-              </thead>
-              <tbody className="divide-hair">
-                {market.topHolders.map((h, i) => (
-                  <tr key={h.address} className="tabular-nums transition-colors duration-200 hover:bg-foreground/[0.03]">
-                    <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                    <td className="px-3 py-1.5">
-                      <Address value={h.address} />
-                      {h.label && (
-                        <span className="ml-2 text-[10px] text-muted-foreground">{h.label}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{usd(h.balance)}</td>
-                    <td
-                      className="px-3 py-1.5 text-right tabular-nums"
-                      style={{ color: h.winRate >= 0.6 ? "var(--pos)" : "var(--muted-foreground)" }}
-                    >
-                      {(h.winRate * 100).toFixed(0)}%
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
-                      {h.walletAgeDays}d
-                    </td>
-                    <td className="space-x-1.5 px-3 py-1.5">
-                      {h.isSmartTrader && (
-                        <span className="rounded-full border border-pos/20 bg-pos/10 px-1.5 py-0.5 text-[10px] text-pos">
-                          SMART
-                        </span>
-                      )}
-                      {h.isBurner && (
-                        <span className="rounded-full border border-neg/20 bg-neg/10 px-1.5 py-0.5 text-[10px] text-neg">
-                          SYBIL / BURNER
-                        </span>
-                      )}
-                      {!h.isSmartTrader && !h.isBurner && (
-                        <span className="text-[10px] text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TabsContent>
-
-          <TabsContent value="perps" className="mt-4 grid gap-4 lg:grid-cols-[320px_1fr]">
-            <div className="surface space-y-3 p-4">
-              <div className="eyebrow">
-                {market.perp.symbol} smart money book
-              </div>
-              <div className="flex h-3 overflow-hidden rounded">
-                <div
-                  className="bg-pos"
-                  style={{ width: `${market.perp.netLongShortRatio * 100}%` }}
-                />
-                <div
-                  className="bg-neg"
-                  style={{ width: `${(1 - market.perp.netLongShortRatio) * 100}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[11px] tabular-nums">
-                <span className="text-pos">
-                  LONG {(market.perp.netLongShortRatio * 100).toFixed(0)}%
-                </span>
-                <span className="text-neg">
-                  SHORT {((1 - market.perp.netLongShortRatio) * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="pt-2 text-[11px] tabular-nums text-muted-foreground">
-                Tracked notional: {usd(market.perp.totalVolumeUsd)}
-              </div>
-            </div>
-
-            <div className="surface">
-              <div className="eyebrow border-b hairline px-4 py-2">
-                Recent smart money trades
-              </div>
-              <ul className="divide-hair">
-                {market.perp.recentTrades.map((t) => (
-                  <li key={t.id} className="flex items-center gap-3 px-4 py-1.5 text-xs tabular-nums transition-colors duration-200 hover:bg-foreground/[0.03]">
-                    <span
-                      className="w-12 font-semibold"
-                      style={{ color: t.side === "LONG" ? "var(--pos)" : "var(--neg)" }}
-                    >
-                      {t.side}
-                    </span>
-                    <span className="tabular-nums">{usd(t.sizeUsd)}</span>
-                    <span className="text-muted-foreground tabular-nums">
-                      @ {t.price.toLocaleString()}
-                    </span>
-                    <span className="ml-auto text-muted-foreground"><Address value={t.trader} /></span>
-                    <span className="w-14 text-right text-muted-foreground">{t.minutesAgo}m</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="flows" className="mt-4 grid gap-3 sm:grid-cols-3">
-            {market.netflows.map((f) => (
-              <div key={f.token} className="surface p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold">{f.token}</span>
-                  <span className="eyebrow text-[10px]">{f.window}</span>
-                </div>
-                <div
-                  className="mt-3 text-2xl font-semibold tabular-nums"
-                  style={{ color: f.netflowUsd >= 0 ? "var(--pos)" : "var(--neg)" }}
-                >
-                  {f.netflowUsd >= 0 ? "+" : "-"}
-                  {usd(Math.abs(f.netflowUsd))}
-                </div>
-                <div className="mt-2 text-[11px] tabular-nums text-muted-foreground">
-                  {f.buyersSmart} smart buyers · {f.sellersSmart} smart sellers
-                </div>
-              </div>
-            ))}
-          </TabsContent>
-        </Tabs>
-
-        {/* Dossier */}
-        <section className="panel dossier-grid relative overflow-hidden p-6">
-          <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="-rotate-12 select-none text-6xl font-bold tracking-[0.3em] text-foreground/[0.03] sm:text-8xl">
-              CLASSIFIED
-            </span>
-          </div>
-          <div className="relative flex flex-wrap items-center gap-3">
-            <span className="rounded-sm border border-neg/30 bg-neg/10 px-2 py-0.5 text-[10px] tracking-[0.16em] text-neg">
-              [NANSEN MERIDIAN DEEP SCAN // CONFIDENTIAL]
-            </span>
-            <span className="eyebrow">Actionable intelligence dossier</span>
-            <span className="h-px flex-1 bg-border" />
-            <span className="text-[10px] tabular-nums text-muted-foreground">
-              REF PD-{market.slug.slice(0, 6).toUpperCase()}-{metric.hcsScore}
-            </span>
-          </div>
-          <ol className="relative mt-5 space-y-3 border-l border-brand/30 pl-4 text-sm leading-relaxed text-foreground/90">
-            {dossier.map((line, i) => (
-              <li key={i} className="flex gap-3">
-                <span className="text-[10px] tabular-nums text-brand">{String(i + 1).padStart(2, "0")}</span>
-                <p>{line}</p>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <footer className="pb-8 text-[10px] text-muted-foreground">
-          Built for the Nansen Meridian Buildathon · demo dataset · not financial advice.
-        </footer>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {scored.map(({ a, s }) => (
+            <AssetCard key={a.symbol} a={a} s={s} hLabel={hLabel} onInspect={() => setOpen(a.symbol)} />
+          ))}
+        </div>
       </main>
+
+      <Sheet open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
+        <SheetContent className="w-full overflow-y-auto border-l hairline bg-background font-mono sm:max-w-xl">
+          {selected && <Drawer a={selected.a} s={selected.s} hLabel={hLabel} />}
+        </SheetContent>
+      </Sheet>
+
+      <KeyDialog
+        open={keyOpen}
+        onOpenChange={setKeyOpen}
+        current={userKey}
+        onSave={(k) => {
+          if (k) localStorage.setItem(KEY_STORE, k);
+          else localStorage.removeItem(KEY_STORE);
+          setUserKey(k);
+        }}
+      />
     </div>
   );
 }
 
-function HolderCredibility({ holders }: { holders: ReturnType<typeof getMarkets>[number]["topHolders"] }) {
-  const smart = holders.filter((h) => h.isSmartTrader || (!h.isBurner && h.balance >= 250_000)).reduce((a, h) => a + h.balance, 0);
-  const total = holders.reduce((a, h) => a + h.balance, 0) || 1;
-  const bad = total - smart;
-  const sp = (smart / total) * 100;
+function EdgeBadge({ s }: { s: QuantScore }) {
+  if (s.signal === "FAIR")
+    return (
+      <span className="rounded border border-white/10 bg-muted/40 px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+        Fairly priced ({s.edge > 0 ? "+" : ""}
+        {s.edge}%)
+      </span>
+    );
+  const up = s.signal === "UP";
   return (
-    <div className="surface p-4">
-      <div className="flex items-center justify-between">
-        <span className="eyebrow">Holder credibility · conviction split</span>
-        <span className="text-[11px] tabular-nums text-muted-foreground">{usd(total)} tracked</span>
+    <span
+      className={`rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+        up ? "border-pos/25 bg-pos/10 text-pos" : "border-neg/25 bg-neg/10 text-neg"
+      }`}
+    >
+      ⚡ Arb buy "{up ? "UP" : "DOWN"}" ({up ? "+" : ""}
+      {s.edge}% edge)
+    </span>
+  );
+}
+
+function AssetCard({ a, s, hLabel, onInspect }: { a: AssetBoard; s: QuantScore; hLabel: string; onInspect: () => void }) {
+  const meta = ASSET_META.find((m) => m.symbol === a.symbol)!;
+  const liveCount = Object.values(a.live).filter(Boolean).length;
+  return (
+    <div className="surface flex flex-col gap-4 p-4">
+      <div className="flex items-center gap-3">
+        <div
+          className="grid h-9 w-9 place-items-center rounded-full text-xs font-bold"
+          style={{ background: `${meta.color}22`, color: meta.color, boxShadow: `inset 0 0 0 1px ${meta.color}55` }}
+        >
+          {a.symbol.slice(0, 4)}
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">
+            {a.symbol} Up or Down {hLabel}
+          </div>
+          <div className="text-[11px] text-muted-foreground">{a.name}</div>
+        </div>
+        <span
+          className={`ml-auto h-1.5 w-1.5 rounded-full ${liveCount ? "bg-pos" : "bg-warn"}`}
+          title={`${liveCount}/4 live streams`}
+        />
       </div>
-      <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-muted">
-        <div className="bg-pos transition-all duration-700" style={{ width: `${sp}%` }} />
-        <div className="bg-neg transition-all duration-700" style={{ width: `${100 - sp}%` }} />
+
+      <div className="flex items-center justify-around">
+        <div className="flex flex-col items-center gap-1">
+          <Ring value={a.poly.upProbability} label="Up" color="var(--brand)" />
+          <span className="eyebrow text-[9px]">Polymarket crowd</span>
+        </div>
+        <div className="flex flex-col items-center gap-1">
+          <Ring value={s.sbs} label="Bullish" color={s.sbs >= 0.5 ? "var(--pos)" : "var(--neg)"} />
+          <span className="eyebrow text-[9px]">Nansen smart</span>
+        </div>
       </div>
-      <div className="mt-2 flex justify-between text-[11px] tabular-nums">
-        <span className="text-pos">SMART / WHALE {sp.toFixed(0)}% · {usd(smart)}</span>
-        <span className="text-neg">UNVERIFIED / BURNER {(100 - sp).toFixed(0)}% · {usd(bad)}</span>
+
+      <div className="flex justify-center">
+        <EdgeBadge s={s} />
       </div>
+
+      <div className="rounded border hairline bg-background/40 px-2 py-1.5 text-[10px] leading-snug text-muted-foreground">
+        Nansen 3-Stream Flow: <span className="tabular-nums text-foreground">{usd(s.trackedFlowUsd)}</span> tracked across Perps + DEX + CEX
+      </div>
+
+      <button
+        type="button"
+        onClick={onInspect}
+        className="flex items-center justify-center gap-2 rounded-md border border-brand/25 bg-brand/10 py-2 text-xs uppercase tracking-wider text-brand transition-colors hover:bg-brand/20"
+      >
+        <ScanSearch className="h-3.5 w-3.5" /> Inspect onchain proof
+      </button>
     </div>
+  );
+}
+
+function SourceTag({ live }: { live: boolean }) {
+  return (
+    <span className={`text-[9px] uppercase tracking-wider ${live ? "text-pos" : "text-warn"}`}>
+      {live ? "● live" : "● snapshot"}
+    </span>
+  );
+}
+
+function Drawer({ a, s, hLabel }: { a: AssetBoard; s: QuantScore; hLabel: string }) {
+  const longPct = s.perpRatio * 100;
+  const dossier = buildDossier(a, s, hLabel);
+  return (
+    <>
+      <SheetHeader>
+        <SheetTitle className="font-mono">
+          {a.symbol} Up or Down {hLabel}
+        </SheetTitle>
+        <SheetDescription className="font-mono text-xs">
+          Polymarket {Math.round(a.poly.upProbability * 100)}% Up · SBS {Math.round(s.sbs * 100)}% · Edge{" "}
+          <span className={s.edge >= 0 ? "text-pos" : "text-neg"}>
+            {s.edge > 0 ? "+" : ""}
+            {s.edge} pts
+          </span>
+          {a.poly.slug && (
+            <>
+              {" · "}
+              <a className="text-brand underline" href={`https://polymarket.com/event/${a.poly.slug}`} target="_blank" rel="noreferrer">
+                View market
+              </a>
+            </>
+          )}
+        </SheetDescription>
+      </SheetHeader>
+
+      <Tabs defaultValue="perp" className="mt-4 px-4 pb-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="perp" className="text-[11px]">Perp Order Flow</TabsTrigger>
+          <TabsTrigger value="flows" className="text-[11px]">DEX & CEX</TabsTrigger>
+          <TabsTrigger value="dossier" className="text-[11px]">Dossier</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="perp" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="eyebrow">Hyperliquid smart money · weight 50%</span>
+            <SourceTag live={a.live.perp} />
+          </div>
+          <div>
+            <div className="mb-1 flex justify-between text-xs tabular-nums">
+              <span className="text-pos">{usd(a.perp.longUsd)} Long</span>
+              <span className="text-neg">{usd(a.perp.shortUsd)} Short</span>
+            </div>
+            <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
+              <div className="bg-pos transition-all" style={{ width: `${longPct}%` }} />
+              <div className="flex-1 bg-neg" />
+            </div>
+            <div className="mt-1 text-center text-[11px] text-muted-foreground tabular-nums">
+              Perp long ratio {longPct.toFixed(1)}%
+            </div>
+          </div>
+          <table className="w-full text-xs tabular-nums">
+            <thead>
+              <tr className="border-b hairline text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="py-1.5">Dir</th>
+                <th className="text-right">Notional</th>
+                <th className="text-right">Price</th>
+                <th className="text-right">Trader</th>
+                <th className="text-right">Time</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.04]">
+              {a.perp.fills.map((f, i) => (
+                <tr key={i} className="hover:bg-white/[0.02]">
+                  <td className={`py-1.5 ${f.side === "LONG" ? "text-pos" : "text-neg"}`}>{f.side}</td>
+                  <td className="text-right">{usd(f.notionalUsd)}</td>
+                  <td className="text-right">${f.price.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                  <td className="text-right">
+                    <Address value={f.trader} />
+                  </td>
+                  <td className="text-right text-muted-foreground">{ago(f.minutesAgo)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TabsContent>
+
+        <TabsContent value="flows" className="space-y-4">
+          <div className="surface space-y-2 p-4">
+            <div className="flex items-center justify-between">
+              <span className="eyebrow">Smart money DEX netflow · weight 30%</span>
+              <SourceTag live={a.live.dex} />
+            </div>
+            <div className={`text-2xl font-semibold tabular-nums ${a.dex.netflowUsd >= 0 ? "text-pos" : "text-neg"}`}>
+              {usd(a.dex.netflowUsd, true)}
+            </div>
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {a.dex.buyers} smart buyers · {a.dex.sellers} smart sellers · stance {(s.dexStance * 100).toFixed(1)}%
+            </div>
+          </div>
+          <div className="surface space-y-3 p-4">
+            <div className="flex items-center justify-between">
+              <span className="eyebrow">CEX reserve flows · weight 20%</span>
+              <SourceTag live={a.live.cex} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm tabular-nums">
+              <div>
+                <div className="text-[10px] uppercase text-muted-foreground">Inflow (sell pressure)</div>
+                <div className="text-neg">{usd(a.cex.inflowUsd)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase text-muted-foreground">Outflow (supply shock)</div>
+                <div className="text-pos">{usd(a.cex.outflowUsd)}</div>
+              </div>
+            </div>
+            <div className="flex h-2 overflow-hidden rounded-full bg-muted">
+              <div className="bg-pos" style={{ width: `${s.cexRatio * 100}%` }} />
+              <div className="flex-1 bg-neg" />
+            </div>
+            <div className="text-xs text-muted-foreground tabular-nums">Supply shock ratio {(s.cexRatio * 100).toFixed(1)}%</div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="dossier">
+          <div className="dossier-grid relative overflow-hidden rounded-lg border border-brand/20 p-5">
+            <div className="pointer-events-none absolute inset-0 grid place-items-center text-5xl font-bold tracking-widest text-foreground/[0.03] -rotate-12">
+              CLASSIFIED
+            </div>
+            <div className="mb-4 inline-block rounded border border-neg/30 bg-neg/10 px-2 py-0.5 text-[10px] tracking-wider text-neg">
+              [NANSEN MERIDIAN DEEP SCAN // CONFIDENTIAL]
+            </div>
+            <ol className="relative space-y-3 text-xs leading-relaxed">
+              {dossier.map((l, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-brand">0{i + 1}</span>
+                  <span>{l}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </>
+  );
+}
+
+function KeyDialog({
+  open,
+  onOpenChange,
+  current,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  current: string;
+  onSave: (k: string) => void;
+}) {
+  const [val, setVal] = useState(current);
+  useEffect(() => setVal(current), [current, open]);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="font-mono">
+        <DialogHeader>
+          <DialogTitle>Test with your own Nansen key</DialogTitle>
+          <DialogDescription>
+            Optional. Stored only in this browser and sent to our server just to query Nansen. Leave empty to use the built-in key.
+          </DialogDescription>
+        </DialogHeader>
+        <Input type="password" placeholder="Nansen API key" value={val} onChange={(e) => setVal(e.target.value)} />
+        <DialogFooter className="gap-2">
+          {current && (
+            <Button variant="outline" onClick={() => { onSave(""); onOpenChange(false); }}>
+              Clear key
+            </Button>
+          )}
+          <Button onClick={() => { onSave(val.trim()); onOpenChange(false); }}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
