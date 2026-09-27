@@ -71,7 +71,7 @@ function Terminal() {
   });
 
   const snapshot = useMemo(() => snapshotBoard(horizon), [horizon]);
-  const sameHorizon = q.data && q.data.assets === q.data.assets && q.isPlaceholderData === false;
+  const sameHorizon = !!q.data && !q.isPlaceholderData;
   const assets = sameHorizon ? q.data!.assets : snapshot;
   const liveStreams = sameHorizon ? q.data!.liveStreams : 0;
   const scored = useMemo(() => assets.map((a) => ({ a, s: scoreAsset(a) })), [assets]);
