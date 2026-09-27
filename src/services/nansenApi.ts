@@ -235,7 +235,7 @@ export async function fetchLiveMarket(slug: string): Promise<LiveMarketResult> {
     const [screener, holdersRes, perps, flows] = await Promise.all([
       call("prediction-market/market-screener", { search: mock.question, pagination: { page: 1, per_page: 5 } }),
       call("prediction-market/top-holders", { market_slug: mock.slug, pagination: { page: 1, per_page: 10 } }),
-      call("smart-money/perp-trades", { filters: { token_symbol: token }, pagination: { page: 1, per_page: 5 } }),
+      call("smart-money/perp-trades", { filters: { token_symbol: token }, pagination: { page: 1, per_page: 100 } }),
       call("smart-money/netflow", { chains: ["ethereum", "solana", "base"], pagination: { page: 1, per_page: 3 } }),
     ]);
     if (!screener && !holdersRes && !perps && !flows) return { market: mock, live: false };
@@ -263,7 +263,11 @@ export async function fetchLiveMarket(slug: string): Promise<LiveMarketResult> {
       });
     }
     if (perps) {
-      const trades: PerpTrade[] = perps.slice(0, 5).map((t, i) => ({
+      const matching = perps.filter((t) => {
+        const sym = str(t, "token_symbol", "symbol", "coin");
+        return !sym || sym.toUpperCase().replace(/-PERP$/, "") === token;
+      });
+      const trades: PerpTrade[] = matching.map((t, i) => ({
         id: `live-${i}`,
         side: /short|sell/i.test(str(t, "side", "action", "type") ?? "") ? "SHORT" : "LONG",
         sizeUsd: num(t, "value_usd", "size_usd", "notional_usd") ?? 0,
@@ -276,8 +280,12 @@ export async function fetchLiveMarket(slug: string): Promise<LiveMarketResult> {
       }));
       const longV = trades.filter((t) => t.side === "LONG").reduce((a, t) => a + t.sizeUsd, 0);
       const totV = trades.reduce((a, t) => a + t.sizeUsd, 0);
-      m.perp.recentTrades = trades;
-      if (totV > 0) m.perp.netLongShortRatio = longV / totV;
+      if (trades.length) m.perp.recentTrades = trades.slice(0, 5);
+      // Only trust the live long/short split with a meaningful sample; tiny samples swing to 0% or 100%.
+      const longs = trades.filter((t) => t.side === "LONG").length;
+      if (trades.length >= 10 && totV > 0 && longs > 0 && longs < trades.length) {
+        m.perp.netLongShortRatio = longV / totV;
+      }
     }
     if (flows) {
       m.netflows = flows.slice(0, 3).map((f) => ({
