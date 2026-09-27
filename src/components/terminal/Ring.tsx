@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 interface RingProps {
   value: number; // 0-1
   label: string;
@@ -6,6 +8,11 @@ interface RingProps {
 }
 
 export function Ring({ value, label, color, size = 84 }: RingProps) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(value));
+    return () => cancelAnimationFrame(id);
+  }, [value]);
   const r = size / 2 - 6;
   const c = 2 * Math.PI * r;
   return (
@@ -21,8 +28,8 @@ export function Ring({ value, label, color, size = 84 }: RingProps) {
           strokeWidth="6"
           strokeLinecap="round"
           strokeDasharray={c}
-          strokeDashoffset={c * (1 - Math.min(1, Math.max(0, value)))}
-          style={{ transition: "stroke-dashoffset 700ms cubic-bezier(.22,1,.36,1), stroke 300ms" }}
+          strokeDashoffset={c * (1 - Math.min(1, Math.max(0, shown)))}
+          style={{ transition: "stroke-dashoffset 900ms cubic-bezier(.22,1,.36,1), stroke 300ms" }}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
