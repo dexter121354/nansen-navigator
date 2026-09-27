@@ -186,3 +186,110 @@ export function getMarkets(): PredictionMarket[] {
 export function getMarket(slug: string): PredictionMarket {
   return MARKETS.find((m) => m.slug === slug) ?? (MARKETS[0] as PredictionMarket);
 }
+
+// ---------------- Live layer with graceful degradation ----------------
+import { nansenProxy } from "@/lib/nansen.functions";
+
+type Row = Record<string, unknown>;
+const rows = (d: unknown): Row[] => {
+  if (Array.isArray(d)) return d as Row[];
+  if (d && typeof d === "object") {
+    const o = d as Row;
+    for (const k of ["data", "results", "items"]) if (Array.isArray(o[k])) return o[k] as Row[];
+  }
+  return [];
+};
+const num = (r: Row, ...keys: string[]) => {
+  for (const k of keys) {
+    const v = Number(r[k]);
+    if (Number.isFinite(v)) return v;
+  }
+  return undefined;
+};
+const str = (r: Row, ...keys: string[]) => {
+  for (const k of keys) if (typeof r[k] === "string" && r[k]) return r[k] as string;
+  return undefined;
+};
+
+async function call(endpoint: string, body: unknown): Promise<Row[] | null> {
+  try {
+    const res = await nansenProxy({ data: { endpoint, body } });
+    if (!res.ok) return null;
+    const list = rows(res.data);
+    return list.length ? list : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface LiveMarketResult {
+  market: PredictionMarket;
+  live: boolean;
+}
+
+/** Fetch live Nansen data for a market; any failure falls back to the mock snapshot. */
+export async function fetchLiveMarket(slug: string): Promise<LiveMarketResult> {
+  const mock = getMarket(slug);
+  try {
+    const token = mock.perp.symbol.replace("-PERP", "");
+    const [screener, holdersRes, perps, flows] = await Promise.all([
+      call("prediction-market/market-screener", { search: mock.question, pagination: { page: 1, per_page: 5 } }),
+      call("prediction-market/top-holders", { market_slug: mock.slug, pagination: { page: 1, per_page: 10 } }),
+      call("smart-money/perp-trades", { filters: { token_symbol: token }, pagination: { page: 1, per_page: 5 } }),
+      call("smart-money/netflow", { chains: ["ethereum", "solana", "base"], pagination: { page: 1, per_page: 3 } }),
+    ]);
+    if (!screener && !holdersRes && !perps && !flows) return { market: mock, live: false };
+
+    const m: PredictionMarket = { ...mock, perp: { ...mock.perp }, topHolders: mock.topHolders, netflows: mock.netflows };
+    const s = screener?.[0];
+    if (s) {
+      const p = num(s, "yes_price", "implied_probability", "probability", "price");
+      if (p !== undefined && p >= 0 && p <= 1) m.impliedProbability = p;
+      m.volume24h = num(s, "volume_24h", "volume24h", "volume") ?? m.volume24h;
+    }
+    if (holdersRes) {
+      m.topHolders = holdersRes.slice(0, 10).map((h) => {
+        const age = num(h, "wallet_age_days", "walletAgeDays") ?? 0;
+        const label = str(h, "label", "address_label");
+        return {
+          address: str(h, "address", "wallet_address") ?? "0x0",
+          label,
+          balance: num(h, "position_usd", "value_usd", "balance") ?? 0,
+          winRate: num(h, "win_rate", "winRate") ?? 0.5,
+          walletAgeDays: age,
+          isSmartTrader: /smart|fund/i.test(label ?? ""),
+          isBurner: age > 0 && age < 14,
+        };
+      });
+    }
+    if (perps) {
+      const trades: PerpTrade[] = perps.slice(0, 5).map((t, i) => ({
+        id: `live-${i}`,
+        side: /short|sell/i.test(str(t, "side", "action", "type") ?? "") ? "SHORT" : "LONG",
+        sizeUsd: num(t, "value_usd", "size_usd", "notional_usd") ?? 0,
+        price: num(t, "price", "price_usd") ?? 0,
+        trader: str(t, "trader_address", "address") ?? "0x0",
+        minutesAgo: (() => {
+          const ts = str(t, "block_timestamp", "timestamp");
+          return ts ? Math.max(0, Math.round((Date.now() - Date.parse(ts)) / 60000)) : 0;
+        })(),
+      }));
+      const longV = trades.filter((t) => t.side === "LONG").reduce((a, t) => a + t.sizeUsd, 0);
+      const totV = trades.reduce((a, t) => a + t.sizeUsd, 0);
+      m.perp.recentTrades = trades;
+      if (totV > 0) m.perp.netLongShortRatio = longV / totV;
+    }
+    if (flows) {
+      m.netflows = flows.slice(0, 3).map((f) => ({
+        token: str(f, "token_symbol", "symbol") ?? "?",
+        netflowUsd: num(f, "net_flow_24h_usd", "netflow_usd", "net_flow_usd") ?? 0,
+        buyersSmart: num(f, "buyers", "buyer_count") ?? 0,
+        sellersSmart: num(f, "sellers", "seller_count") ?? 0,
+        window: "24h",
+      }));
+    }
+    return { market: m, live: true };
+  } catch {
+    return { market: mock, live: false };
+  }
+}

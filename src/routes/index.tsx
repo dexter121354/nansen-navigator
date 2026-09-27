@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Gauge } from "@/components/terminal/Gauge";
 import { Address } from "@/components/terminal/Address";
-import { getMarkets } from "@/services/nansenApi";
+import { fetchLiveMarket, getMarkets } from "@/services/nansenApi";
 import { buildDossier, buildMetric } from "@/utils/divergenceEngine";
 
 export const Route = createFileRoute("/")({
@@ -38,7 +39,15 @@ const usd = (n: number) =>
 function Terminal() {
   const markets = getMarkets();
   const [slug, setSlug] = useState(markets[0]!.slug);
-  const market = markets.find((m) => m.slug === slug) ?? markets[0]!;
+  const fallback = markets.find((m) => m.slug === slug) ?? markets[0]!;
+  const liveQ = useQuery({
+    queryKey: ["nansen-market", slug],
+    queryFn: () => fetchLiveMarket(slug),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const market = liveQ.data?.market ?? fallback;
+  const isLive = liveQ.data?.live === true;
   const metric = useMemo(() => buildMetric(market), [market]);
   const dossier = useMemo(() => buildDossier(market, metric), [market, metric]);
 
@@ -65,6 +74,13 @@ function Terminal() {
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-pos" />
               </span>
               NANSEN ORACLE: CONNECTED
+            </span>
+            <span
+              className={`rounded-full border px-2.5 py-1 tracking-wider ${
+                isLive ? "border-pos/20 bg-pos/10 text-pos" : "border-warn/20 bg-warn/10 text-warn"
+              }`}
+            >
+              {liveQ.isLoading ? "Syncing…" : isLive ? "Live API Connected" : "Cached Snapshot Active"}
             </span>
             <span className="hidden tabular-nums sm:inline">24h VOL {usd(market.volume24h)}</span>
           </div>
