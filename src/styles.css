@@ -170,7 +170,7 @@
   }
 }
 
-@utility panel {
+@utility panel-old {
   border: 1px solid var(--color-border);
   background-color: color-mix(in oklab, var(--card) 80%, transparent);
   border-radius: var(--radius);
@@ -190,4 +190,59 @@
 
 @utility live-dot {
   animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+:root {
+  --surface: oklch(0.17 0.012 270);
+  --hairline: oklch(1 0 0 / 0.07);
+  --hairline-strong: oklch(1 0 0 / 0.15);
+  --divider: oklch(1 0 0 / 0.04);
+}
+
+@utility surface {
+  background-color: color-mix(in oklab, var(--surface) 80%, transparent);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  transition: all 200ms ease;
+  &:hover {
+    border-color: var(--hairline-strong);
+  }
+}
+
+@utility hairline {
+  border-color: var(--hairline);
+}
+
+@utility divide-hair {
+  & > * + * {
+    border-top: 1px solid var(--divider);
+  }
+}
+
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+@utility dossier-grid {
+  background-image:
+    linear-gradient(var(--divider) 1px, transparent 1px),
+    linear-gradient(90deg, var(--divider) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@utility panel {
+  background-color: color-mix(in oklab, var(--surface) 80%, transparent);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  transition: all 200ms ease;
+  &:hover {
+    border-color: var(--hairline-strong);
+  }
 }

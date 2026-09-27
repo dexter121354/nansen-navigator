@@ -13,7 +13,7 @@ export function Gauge({ label, sublabel, value, tone }: GaugeProps) {
   const stroke = tone === "brand" ? "var(--brand)" : pct >= 50 ? "var(--pos)" : "var(--neg)";
 
   return (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card px-6 py-5">
+    <div className="flex flex-col items-center gap-3 surface px-6 py-5">
       <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </span>
