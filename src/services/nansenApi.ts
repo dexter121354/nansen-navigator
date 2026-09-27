@@ -1,3 +1,4 @@
+import { nansenProxy } from "@/lib/nansen.functions";
 import type { HolderProfile, PerpTrade, PredictionMarket } from "@/types/nansen";
 
 const addr = (a: string) => a;
@@ -188,7 +189,6 @@ export function getMarket(slug: string): PredictionMarket {
 }
 
 // ---------------- Live layer with graceful degradation ----------------
-import { nansenProxy } from "@/lib/nansen.functions";
 
 type Row = Record<string, unknown>;
 const rows = (d: unknown): Row[] => {
