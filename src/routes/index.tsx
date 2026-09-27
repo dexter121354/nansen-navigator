@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { KeyRound, ScanSearch, Zap, CalendarDays } from "lucide-react";
+import { KeyRound, ScanSearch, Zap, CalendarDays, Info } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import {
@@ -124,8 +124,50 @@ function Terminal() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <main className="relative mx-auto max-w-7xl px-4 py-6">
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+          <div className="ambient-glow left-[5%] top-[35%] h-96 w-96" style={{ background: "rgba(6,182,212,0.06)" }} />
+          <div className="ambient-glow right-[5%] top-[60%] h-96 w-96" style={{ background: "rgba(16,185,129,0.05)", animationDelay: "4s" }} />
+        </div>
+
+        <section className="surface mb-6 space-y-5 p-5 sm:p-6">
+          <span className="badge-glow inline-block rounded-full border border-brand/40 bg-brand/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-brand">
+            Real-time onchain arbitrage radar
+          </span>
+          <h1 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
+            Exploit Prediction Market Lag with <span className="text-brand">Institutional Capital Flow</span>
+          </h1>
+          <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground sm:text-sm">
+            PolyPulse cross-examines short-term Polymarket binary odds against 3 live Nansen onchain streams (Hyperliquid Perps, DEX
+            Netflows, CEX Supply Shock) to surface mispriced candles before resolution.
+          </p>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              ["1. The Disconnect", "Polymarket retail traders bet on sentiment and headlines, lagging fast onchain moves."],
+              ["2. The Nansen Bias", "We track institutional position accumulation across 3 streams with millisecond granularity."],
+              ["3. The Signal (ARB BUY)", "When Nansen Conviction diverges >15% from crowd odds, a statistical arbitrage window opens."],
+            ].map(([t, d]) => (
+              <div key={t} className="rounded-md border hairline bg-background/40 p-3">
+                <div className="mb-1 text-xs font-semibold text-brand">{t}</div>
+                <div className="text-[11px] leading-snug text-muted-foreground">{d}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="mb-6 flex flex-wrap items-center gap-2 text-[10px] leading-snug">
+          <span className="flex items-center gap-2 rounded border border-pos/25 bg-pos/5 px-2 py-1 text-muted-foreground">
+            <b className="text-pos">⚡ ARB BUY "UP"</b> Smart Bias exceeds crowd by +15% — retail underpricing a breakout
+          </span>
+          <span className="flex items-center gap-2 rounded border border-neg/25 bg-neg/5 px-2 py-1 text-muted-foreground">
+            <b className="text-neg">⚡ ARB BUY "DOWN"</b> Smart Bias lags crowd by −15% — retail euphoria, smart money net short
+          </span>
+          <span className="flex items-center gap-2 rounded border hairline bg-muted/30 px-2 py-1 text-muted-foreground">
+            <b className="text-foreground">FAIRLY PRICED</b> Spread within ±15% — efficient, no trade
+          </span>
+        </div>
+
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="inline-flex rounded-lg border hairline bg-card/40 p-1">
             {(
               [
@@ -145,9 +187,18 @@ function Terminal() {
               </button>
             ))}
           </div>
-          <p className="eyebrow max-w-md text-right">
-            SBS = 0.50·Perp Long Ratio + 0.30·DEX Flow + 0.20·CEX Supply Shock · Edge = SBS − Polymarket
-          </p>
+          <details className="group relative">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md border hairline px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground">
+              <Info className="h-3.5 w-3.5" /> Quant Methodology
+            </summary>
+            <div className="surface absolute right-0 z-20 mt-2 w-80 space-y-2 p-4 text-[11px] leading-relaxed text-muted-foreground">
+              <div className="text-foreground">SBS = 0.50·Perp + 0.30·DEX + 0.20·CEX</div>
+              <div>Perp: Hyperliquid smart money long volume ÷ total volume.</div>
+              <div>DEX: normalized smart money netflow stance.</div>
+              <div>CEX: exchange outflows ÷ (inflows + outflows).</div>
+              <div className="text-foreground">Edge = SBS − Polymarket implied Up odds</div>
+            </div>
+          </details>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -189,7 +240,7 @@ function EdgeBadge({ s }: { s: QuantScore }) {
   return (
     <span
       className={`rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-wider ${
-        up ? "border-pos/25 bg-pos/10 text-pos" : "border-neg/25 bg-neg/10 text-neg"
+        up ? "arb-pulse border-pos/25 bg-pos/10 text-pos" : "border-neg/25 bg-neg/10 text-neg"
       }`}
     >
       ⚡ Arb buy "{up ? "UP" : "DOWN"}" ({up ? "+" : ""}
@@ -202,7 +253,7 @@ function AssetCard({ a, s, hLabel, onInspect }: { a: AssetBoard; s: QuantScore; 
   const meta = ASSET_META.find((m) => m.symbol === a.symbol)!;
   const liveCount = Object.values(a.live).filter(Boolean).length;
   return (
-    <div className="surface flex flex-col gap-4 p-4">
+    <div className="surface card-lift flex flex-col gap-4 p-4">
       <div className="flex items-center gap-3">
         <div
           className="grid h-9 w-9 place-items-center rounded-full text-xs font-bold"
