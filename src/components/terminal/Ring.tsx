@@ -36,7 +36,7 @@ export function Ring({ value, label, color, size = 84 }: RingProps) {
         <span className="font-mono text-lg font-semibold tabular-nums" style={{ color }}>
           {Math.round(value * 100)}%
         </span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className="font-mono text-[9px] uppercase tracking-wider" style={{ color }}>{label}</span>
       </div>
     </div>
   );
