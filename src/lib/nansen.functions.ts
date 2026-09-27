@@ -14,7 +14,7 @@ const schema = z.object({
 });
 
 export type NansenProxyResult =
-  | { ok: true; status: number; data: unknown }
+  | { ok: true; status: number; json: string }
   | { ok: false; status: number; error: string };
 
 // Secure server-side proxy to Nansen: hides the API key and avoids CORS.
@@ -33,7 +33,7 @@ export const nansenProxy = createServerFn({ method: "POST" })
         console.error("Nansen error", data.endpoint, res.status, await res.text().catch(() => ""));
         return { ok: false, status: res.status, error: `Upstream ${res.status}` };
       }
-      return { ok: true, status: res.status, data: (await res.json()) as unknown };
+      return { ok: true, status: res.status, json: await res.text() };
     } catch (e) {
       console.error("Nansen fetch failed", e);
       return { ok: false, status: 502, error: "Network error" };
