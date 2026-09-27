@@ -279,7 +279,15 @@ function AssetCard({ a, s, hLabel, onInspect }: { a: AssetBoard; s: QuantScore; 
           <span className="eyebrow text-[9px]">Polymarket crowd</span>
         </div>
         <div className="flex flex-col items-center gap-1">
-          <Ring value={s.sbs} label="Bullish" color={s.sbs >= 0.5 ? "var(--pos)" : "var(--neg)"} />
+          {(() => {
+            const conviction =
+              s.sbs >= 0.55
+                ? { label: "Bullish", color: "var(--pos)" }
+                : s.sbs <= 0.45
+                  ? { label: "Bearish", color: "var(--neg)" }
+                  : { label: "Neutral", color: "var(--muted-foreground)" };
+            return <Ring value={s.sbs} label={conviction.label} color={conviction.color} />;
+          })()}
           <span className="eyebrow text-[9px]">Nansen smart</span>
         </div>
       </div>
