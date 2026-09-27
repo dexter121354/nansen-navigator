@@ -1,32 +1,60 @@
-# Meridian Builder
+# PolyPulse — 4H & Daily Binary Quant Terminal
+Built for the Nansen Meridian Buildathon (September 2026)
 
-https://academy.nansen.ai/en/help/articles/3540155-nansen-meridian-buildathon-sep-14-27
+Live Web Terminal: https://nansen-navigator.lovable.app/
 
-https://nansen.ai/campaigns/meridian-buildathon
+// I saw tweet yesterday, I only had 6-7 hours to do this build. I had something much more complex in mind but I adjusted as per time constraints. that's why no dedicated domain is used.
 
-https://docs.nansen.ai/getting-started/rate-limits
+---
 
-i just gave you these links so you know what i mean by nansen buildathon, it's just for context. you can also take help from it if you want.
+## What is PolyPulse?
 
-This project was built with [Lovable](https://lovable.dev).
+Prediction markets like Polymarket offer fast-moving binary contracts (e.g., "BTC Up or Down 4h" and "ETH Up or Down Daily"). Retail odds on these markets often lag behind real market momentum because public bettors trade on headlines and emotion.
 
-**Live app**: https://nansen-navigator.lovable.app
+PolyPulse identifies statistical arbitrage opportunities by comparing live Polymarket odds against real-time institutional capital flow tracked by Nansen.
 
-## Build with Lovable
+---
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/076fca64-ada9-4746-a89a-7e35c0915c0f).
+## The 3 Nansen Data Streams
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+PolyPulse queries three distinct Nansen endpoints to calculate institutional conviction:
 
-## Development
+1. Hyperliquid Perps (/api/v1/smart-money/perp-trades)
+   - Tracks whether Smart Money is net Long or Short on Hyperliquid.
+   - Weight: 50%
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+2. Smart Money DEX Flows (/api/v1/smart-money/netflow)
+   - Tracks if whales are accumulating or dumping tokens on decentralized exchanges.
+   - Weight: 30%
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+3. CEX Reserve Flows (/api/v1/tgm/flow-intelligence)
+   - Measures Centralized Exchange deposits (sell pressure) vs. withdrawals (supply absorption).
+   - Weight: 20%
+
+---
+
+## Scoring Formula & Signals
+
+Smart Bias Score (SBS) = (0.50 * Perp Ratio) + (0.30 * DEX Flow) + (0.20 * CEX Outflows)
+
+Alpha Edge = Smart Bias Score - Polymarket Probability
+
+- Green [ARB BUY UP]: Smart Bias exceeds crowd odds by +15% or more (retail is underpricing an upward breakout).
+- Red [ARB BUY DOWN]: Smart Bias is below crowd odds by -15% or more (retail is overly bullish while smart money is shorting).
+- Gray [FAIRLY PRICED]: The difference is within +/- 15% (market is efficient).
+
+---
+
+## Tech Stack
+
+- Frontend: React, Vite, TypeScript, Tailwind CSS
+- Data Sources: Nansen API v1, Polymarket Public Gamma API
+- Backend: Supabase Edge Functions for secure API key injection
+
+---
+
+## How to Run Locally
+
+```bash
+npm install
 npm run dev
-```
