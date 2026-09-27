@@ -82,7 +82,7 @@ export function buildDossier(market: PredictionMarket, metric: DivergenceMetric)
   }
 
   lines.push(
-    `Holder Credibility Score is ${metric.hcsScore}/100 (${metric.topHolders_desc ?? ""}${market.topHolders.filter((h) => h.isBurner).length} flagged burner/sybil wallets in the top ${market.topHolders.length}). ${
+    `Holder Credibility Score is ${metric.hcsScore}/100 (${market.topHolders.filter((h) => h.isBurner).length} flagged burner/sybil wallets in the top ${market.topHolders.length}). ${
       metric.hcsScore >= 60
         ? "Book quality is high — treat the implied odds as informative."
         : "Book quality is weak — implied odds are noisy and easily manipulated."
@@ -90,10 +90,4 @@ export function buildDossier(market: PredictionMarket, metric: DivergenceMetric)
   );
 
   return lines;
-}
-
-declare module "@/types/nansen" {
-  interface DivergenceMetric {
-    topHolders_desc?: string;
-  }
 }
