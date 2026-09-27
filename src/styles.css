@@ -248,3 +248,12 @@
     border-color: var(--hairline-strong);
   }
 }
+
+/* Ambient + interaction polish */
+@keyframes breathe { 0%,100% { opacity: .55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes arb-pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--pos) 0%, transparent); } 50% { box-shadow: 0 0 14px 2px color-mix(in oklab, var(--pos) 35%, transparent); } }
+.ambient-glow { position: absolute; border-radius: 9999px; filter: blur(80px); pointer-events: none; animation: breathe 9s ease-in-out infinite; }
+.card-lift { transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease; }
+.card-lift:hover { transform: translateY(-2px); border-color: color-mix(in oklab, var(--brand) 40%, transparent); box-shadow: 0 0 20px color-mix(in oklab, var(--brand) 15%, transparent); }
+.arb-pulse { animation: arb-pulse 2.4s ease-in-out infinite; }
+.badge-glow { box-shadow: 0 0 12px color-mix(in oklab, var(--brand) 30%, transparent); }
