@@ -215,7 +215,7 @@ async function call(endpoint: string, body: unknown): Promise<Row[] | null> {
   try {
     const res = await nansenProxy({ data: { endpoint, body } });
     if (!res.ok) return null;
-    const list = rows(res.data);
+    const list = rows(JSON.parse(res.json));
     return list.length ? list : null;
   } catch {
     return null;
